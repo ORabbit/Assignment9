@@ -120,21 +120,32 @@ int fishDirList(uchar *packet)
  */
 void fishGetFile(uchar *packet)
 {
-	int i, n;
+	int i, j, n;
+	char c;
 	uchar *ppkt = packet;
 	struct ethergram *eg = (struct ethergram *)packet;
 
 	eg->data[0] = FISH_NOFILE;
 	for(i = 0; i < DIRENTRIES; i++)
 	{
-		if(filetab[i].fn_state == FILE_USED && 0 == memcmp(filetab[i].fn_name, eg->data + 1, FNAMLEN))
+//		printf("filename:%s\tdatafilename:%s\n", filetab[i].fn_name, eg->data + 1);
+		if(filetab[i].fn_state == FILE_USED && 0 == strncmp(filetab[i].fn_name, eg->data + 1, FNAMLEN))
 		{
+//			printf("HERE\n");
 			// Set up data to return here... from file info
 			bzero(eg->data, ETHER_MINPAYLOAD);
 			eg->data[0] = FISH_HAVEFILE;
+			eg->data[1] = (char) filetab[i].fn_length;
+			memcpy(eg->data + 2, filetab[i].fn_name, FNAMLEN);
+			fileOpen(filetab[i].fn_name); // Might need to check for SYSERR
+			strncpy(eg->data + 2 + FNAMLEN, filetab[i].fn_data, filetab[i].fn_length);
+			fileClose(i);
 			break;
 		}
 	}
+//	for(i = 1; i < ETHER_MINPAYLOAD; i++)
+//		printf("eg->data[%d]: %c\n", i, eg->data[i]);
+
 	/* Source of request becomes destination of reply. */
 	memcpy(eg->dst, eg->src, ETH_ADDR_LEN);
 	/* Source of reply becomes me. */
@@ -157,6 +168,25 @@ void fishGetFile(uchar *packet)
 	}*/
 	//strncpy(&eg->data[1], nvramGet("hostname\0"), FISH_MAXNAME-1);
 	write(ETH0, packet, ETHER_SIZE + ETHER_MINPAYLOAD);
+}
+
+void fishHaveFile(uchar *packet)
+{
+	int i, n;
+	uchar *ppkt = packet;
+	struct ethergram *eg = (struct ethergram *)packet;
+
+	char fileName[FNAMLEN];
+	strncpy(fileName, eg->data + 2, FNAMLEN);
+	i = fileCreate(fileName); // Might need to check for SYSERR
+	//filetab[i].fn_length = (int)eg->data[1];
+	n = fileOpen(fileName);//filetab[i].fn_state = FILE_OPEN;
+//printf("2+FNAMLEN:%c\t2+FNAMLEN+1:%c\tn:%d\n", eg->data[2+FNAMLEN], eg->data[3+FNAMLEN], n);
+	for(n = 2+FNAMLEN; (n-(2+FNAMLEN)) < (int)eg->data[1]; n++)
+		filePutChar(i, eg->data[n]);//filetab[i].fn_data[n-(2+FNAMLEN)] = eg->data[n];
+	//strncpy(filetab[i].fn_data, eg->data + 2 + FNAMLEN, filetab[i].fn_length);
+	//filetab[i].fn_cursor = filetab[i].fn_length;
+	fileClose(i);
 }
 
 /*------------------------------------------------------------------------
@@ -208,7 +238,7 @@ int fileSharer(int dev)
 				fishGetFile(packet);
 				break;
 			case FISH_HAVEFILE:
-				//fishHaveFile(packet);
+				fishHaveFile(packet);
 				break;
 			case FISH_NOFILE:
 				printf("ERROR: Remote file %s not found!\n", eg->data + 1);

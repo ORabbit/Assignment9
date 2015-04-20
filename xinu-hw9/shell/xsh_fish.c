@@ -41,7 +41,7 @@ static int fishSend(uchar *dst, char fishtype)
 	{
 		*ppkt++ = i;
 	}
-printf("ppkt: %X\n", ppkt);
+//printf("ppkt: %X\n", ppkt);
 	write(ETH0, packet, ppkt - packet);
 	
 	return OK;
@@ -78,16 +78,16 @@ static int fishSendPayload(uchar *dst, char fishtype, char payload[], int length
 	*ppkt++ = ETYPE_FISH & 0xFF;
 		
 	*ppkt++ = fishtype;	
-	printf("%s\n", payload);	
+//printf("%s\n", payload);	
 	for(i = 0; i < length; i++)
 		*ppkt++ = (uchar) payload[i];
 //	for (i = length; i < ETHER_MINPAYLOAD - 1; i++)
 	for (i = 1; i < ETHER_MINPAYLOAD - length; i++)
 	{
-		*ppkt++ = i;
+		*ppkt++ = '\0';
 	}
 		
-printf("ppkt: %X\n", ppkt);
+//printf("ppkt: %X\n", ppkt);
 	write(ETH0, packet, ppkt - packet);
 	
 	return OK;
@@ -168,7 +168,7 @@ command xsh_fish(ushort nargs, char *args[])
 		
 		fishSendPayload(school[i].mac, FISH_GETFILE, args[3], FNAMLEN);
 
-		sleep(1000); // Maybe? Doesn't say we have to
+		//sleep(1000); // Maybe? Doesn't say we have to
 //printf("FISH_GETFILE: %d\n", FISH_GETFILE);
 //		printf("NOTHING HERE YET\n");
 		return OK;
