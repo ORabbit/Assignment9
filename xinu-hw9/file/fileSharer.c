@@ -70,7 +70,7 @@ void fishPing(uchar *packet)
  */
 void fishDirAsk(uchar *packet)
 {
-	int i, n;
+	int i, n, payloadBytes;
 	uchar *ppkt = packet;
 	struct ethergram *eg = (struct ethergram *)packet;
 
@@ -79,22 +79,20 @@ void fishDirAsk(uchar *packet)
 	/* Source of reply becomes me. */
 	memcpy(eg->src, myMAC, ETH_ADDR_LEN);
 	/* Zero out payload. */
-	bzero(eg->data, ETHER_MINPAYLOAD);
+	bzero(eg->data, 1 + (FNAMLEN * DIRENTRIES)); // DOUBLE CHECK
 	/* FISH type becomes DIRLIST. */
 	eg->data[0] = FISH_DIRLIST;
 
 	n = 1;
 	for (i = 0; i < DIRENTRIES; i++)
 	{
-		if (filetab[i].fn_state == FILE_USED)
+		if (0 == !(filetab[i].fn_state & (FILE_USED | FILE_OPEN))) // SAM'S VERSION
 		{
 			strncpy(&eg->data[n], filetab[i].fn_name, FNAMLEN);
 			n += FNAMLEN;
-			//memcpy(filetab[i].fn_name, eg->data + 1, FNAMLEN);
 		}
 	}
-	//strncpy(&eg->data[1], nvramGet("hostname\0"), FISH_MAXNAME-1);
-	write(ETH0, packet, ETHER_SIZE + ETHER_MINPAYLOAD);
+	write(ETH0, packet, ETHER_SIZE + 1 + (FNAMLEN * DIRENTRIES)); // 1 for fish type
 }
 
 /*------------------------------------------------------------------------
@@ -105,13 +103,12 @@ int fishDirList(uchar *packet)
 	struct ethergram *eg = (struct ethergram *)packet;
 	int i, n = 1;
 
-	for(i = 0; i < DIRENTRIES && (eg->data + n) != '\0'; i++) // Come back, check to make sure we aren't past eg->data's length
+	for(i = 0; i < DIRENTRIES && (eg->data + n) != '\0'; i++)
 	{
 		memcpy(fishlist[i], eg->data + n, FNAMLEN);
 		n += FNAMLEN;
 	}
 	return OK;
-	// MAYBE RETURN SYSERR IF NO FILES IN THEIR DIRLIST
 }
 
 /*------------------------------------------------------------------------
@@ -128,46 +125,28 @@ void fishGetFile(uchar *packet)
 	eg->data[0] = FISH_NOFILE;
 	for(i = 0; i < DIRENTRIES; i++)
 	{
-//		printf("filename:%s\tdatafilename:%s\n", filetab[i].fn_name, eg->data + 1);
-		if(filetab[i].fn_state == FILE_USED && 0 == strncmp(filetab[i].fn_name, eg->data + 1, FNAMLEN))
+		if(0 == !(filetab[i].fn_state & (FILE_OPEN | FILE_USED)) && 0 == strncmp(filetab[i].fn_name, eg->data + 1, FNAMLEN))
 		{
-//			printf("HERE\n");
 			// Set up data to return here... from file info
-			bzero(eg->data, ETHER_MINPAYLOAD);
+			bzero(eg->data, 1 + DISKBLOCKLEN + FNAMLEN);
 			eg->data[0] = FISH_HAVEFILE;
-			eg->data[1] = (char) filetab[i].fn_length;
-			memcpy(eg->data + 2, filetab[i].fn_name, FNAMLEN);
+			memcpy(eg->data + 1, filetab[i].fn_name, FNAMLEN);
 			fileOpen(filetab[i].fn_name); // Might need to check for SYSERR
-			strncpy(eg->data + 2 + FNAMLEN, filetab[i].fn_data, filetab[i].fn_length);
+			strncpy(eg->data + 1 + FNAMLEN, filetab[i].fn_data, filetab[i].fn_length);
 			fileClose(i);
 			break;
 		}
 	}
-//	for(i = 1; i < ETHER_MINPAYLOAD; i++)
-//		printf("eg->data[%d]: %c\n", i, eg->data[i]);
 
 	/* Source of request becomes destination of reply. */
 	memcpy(eg->dst, eg->src, ETH_ADDR_LEN);
 	/* Source of reply becomes me. */
 	memcpy(eg->src, myMAC, ETH_ADDR_LEN);
-	/* Zero out payload. */
-	//bzero(eg->data, ETHER_MINPAYLOAD);
-	/* FISH type becomes DIRLIST. */
-	//eg->data[0] = ;
-	//printf("eg->data[1] %s\n", eg->data + 1);
 
-	/*n = 1;
-	for (i = 0; i < DIRENTRIES; i++)
-	{
-		if (filetab[i].fn_state == FILE_USED)
-		{
-			strncpy(&eg->data[n], filetab[i].fn_name, FNAMLEN);
-			n += FNAMLEN;
-			//memcpy(filetab[i].fn_name, eg->data + 1, FNAMLEN);
-		}
-	}*/
-	//strncpy(&eg->data[1], nvramGet("hostname\0"), FISH_MAXNAME-1);
-	write(ETH0, packet, ETHER_SIZE + ETHER_MINPAYLOAD);
+	if(eg->data[0] == FISH_NOFILE)
+		write(ETH0, packet, ETHER_SIZE + ETHER_MINPAYLOAD);
+	else
+		write(ETH0, packet, ETHER_SIZE + 1 + DISKBLOCKLEN + FNAMLEN); // 1 for the fish type
 }
 
 void fishHaveFile(uchar *packet)
@@ -177,15 +156,11 @@ void fishHaveFile(uchar *packet)
 	struct ethergram *eg = (struct ethergram *)packet;
 
 	char fileName[FNAMLEN];
-	strncpy(fileName, eg->data + 2, FNAMLEN);
+	strncpy(fileName, eg->data + 1, FNAMLEN);
 	i = fileCreate(fileName); // Might need to check for SYSERR
-	//filetab[i].fn_length = (int)eg->data[1];
-	n = fileOpen(fileName);//filetab[i].fn_state = FILE_OPEN;
-//printf("2+FNAMLEN:%c\t2+FNAMLEN+1:%c\tn:%d\n", eg->data[2+FNAMLEN], eg->data[3+FNAMLEN], n);
-	for(n = 2+FNAMLEN; (n-(2+FNAMLEN)) < (int)eg->data[1]; n++)
-		filePutChar(i, eg->data[n]);//filetab[i].fn_data[n-(2+FNAMLEN)] = eg->data[n];
-	//strncpy(filetab[i].fn_data, eg->data + 2 + FNAMLEN, filetab[i].fn_length);
-	//filetab[i].fn_cursor = filetab[i].fn_length;
+	fileOpen(fileName);
+	for(n = 1 + FNAMLEN; eg->data[n] != '\0'; n++)
+		filePutChar(i, eg->data[n]);
 	fileClose(i);
 }
 

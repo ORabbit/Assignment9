@@ -1,7 +1,7 @@
 /**
  * @file     xsh_fish.c
  * @provides xsh_fish
- *
+ * Modified by: Casey O'Hare & Sam Ostlund
  */
 /* Embedded XINU, Copyright (C) 2013.  All rights reserved. */
 
@@ -41,7 +41,6 @@ static int fishSend(uchar *dst, char fishtype)
 	{
 		*ppkt++ = i;
 	}
-//printf("ppkt: %X\n", ppkt);
 	write(ETH0, packet, ppkt - packet);
 	
 	return OK;
@@ -77,17 +76,15 @@ static int fishSendPayload(uchar *dst, char fishtype, char payload[], int length
 	*ppkt++ = ETYPE_FISH >> 8;
 	*ppkt++ = ETYPE_FISH & 0xFF;
 		
-	*ppkt++ = fishtype;	
-//printf("%s\n", payload);	
+	*ppkt++ = fishtype;
+	
 	for(i = 0; i < length; i++)
 		*ppkt++ = (uchar) payload[i];
-//	for (i = length; i < ETHER_MINPAYLOAD - 1; i++)
 	for (i = 1; i < ETHER_MINPAYLOAD - length; i++)
 	{
 		*ppkt++ = '\0';
 	}
 		
-//printf("ppkt: %X\n", ppkt);
 	write(ETH0, packet, ppkt - packet);
 	
 	return OK;
@@ -150,6 +147,7 @@ command xsh_fish(ushort nargs, char *args[])
 		for(i = 0; i < DIRENTRIES; i++)
 			if(fishlist[i][0] != '\0')
 				printf("%s\n", fishlist[i]);
+		printf("\n"); // SAM'S VERSION
 
 		// TODO: Locate named node in school,
 		//   and send a FISH_DIRASK packet to it.
@@ -167,21 +165,6 @@ command xsh_fish(ushort nargs, char *args[])
 			{printf("No FiSh \"%s\" found in school.\n", args[2]); return SYSERR;}
 		
 		fishSendPayload(school[i].mac, FISH_GETFILE, args[3], FNAMLEN);
-
-		//sleep(1000); // Maybe? Doesn't say we have to
-//printf("FISH_GETFILE: %d\n", FISH_GETFILE);
-//		printf("NOTHING HERE YET\n");
-		return OK;
-	}
-	else
-    {
-        fprintf(stdout, "Usage: fish [ping | list <node> | get <node> <filename>]\n");
-        fprintf(stdout, "Simple file sharing protocol.\n");
-        fprintf(stdout, "ping - lists available FISH nodes in school.\n");
-        fprintf(stdout, "list <node> - lists directory contents at node.\n");
-        fprintf(stdout, "get <node> <file> - requests a remote file.\n");
-        fprintf(stdout, "\t--help\t display this help and exit\n");
-
         return 0;
     }
 
